@@ -1,0 +1,44 @@
+ARG FROM_IMAGE_NAME=pytorch/pytorch:2.9.1-cuda13.0-cudnn9-runtime
+FROM ${FROM_IMAGE_NAME}
+
+ARG LLAMA_CPP_REF=master
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    cmake \
+    git \
+    build-essential \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+    && dpkg -i cuda-keyring_1.1-1_all.deb \
+    && rm cuda-keyring_1.1-1_all.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends cuda-toolkit-13-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH=/usr/local/cuda-13.0/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_HOME=/usr/local/cuda-13.0
+
+RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp \
+    && cd /tmp/llama.cpp \
+    && if [ "${LLAMA_CPP_REF}" != "master" ]; then git fetch --depth 1 origin "${LLAMA_CPP_REF}" && git checkout FETCH_HEAD; fi \
+    && CUDACXX=/usr/local/cuda-13.0/bin/nvcc \
+       cmake -S /tmp/llama.cpp -B /tmp/llama.cpp/build \
+       -DCMAKE_BUILD_TYPE=Release \
+       -DGGML_CUDA=ON \
+       -DCMAKE_CUDA_ARCHITECTURES="89;90;100;120" \
+       -DGGML_CUDA_FA_ALL_QUANTS=ON \
+    && cmake --build /tmp/llama.cpp/build --config Release -t llama-server -j"$(nproc)" \
+    && cp /tmp/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server \
+    && rm -rf /tmp/llama.cpp
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8080
+
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,0 +1,28 @@
+services:
+  translategemma:
+    container_name: tg-llama
+    build:
+      context: .
+      dockerfile: MainstreamCudaDockerfile
+      args:
+        LLAMA_CPP_REF: ${LLAMA_CPP_REF:-refs/pull/19052/head}
+    image: gemma-translate:mainstream-cuda
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - "${MODEL_ROOT:-D:/models}:/models"
+    environment:
+      MODEL_NAME: ${MODEL_NAME:-translategemma-12b-it-MP-GGUF}
+      LLAMA_N_GPU_LAYERS: ${LLAMA_N_GPU_LAYERS:--1}
+      LLAMA_N_PARALLEL: ${LLAMA_N_PARALLEL:-2}
+      LLAMA_N_CTX: ${LLAMA_N_CTX:-3072}
+      LLAMA_FLASH_ATTN: ${LLAMA_FLASH_ATTN:-on}
+      LLAMA_PORT: 8080
+    gpus: all
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s

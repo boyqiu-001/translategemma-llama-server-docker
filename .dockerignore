@@ -1,0 +1,8 @@
+.git
+.gitignore
+models
+*.log
+*.tmp
+*.swp
+__pycache__
+.DS_Store
