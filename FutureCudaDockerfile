@@ -2,6 +2,7 @@ ARG FROM_IMAGE_NAME=pytorch/pytorch:2.9.1-cuda13.0-cudnn9-runtime
 FROM ${FROM_IMAGE_NAME}
 
 ARG LLAMA_CPP_REF=master
+ARG LLAMA_CUDA_ARCH="89;90;100;120"
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -26,12 +27,16 @@ ENV CUDA_HOME=/usr/local/cuda-13.0
 RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp \
     && cd /tmp/llama.cpp \
     && if [ "${LLAMA_CPP_REF}" != "master" ]; then git fetch --depth 1 origin "${LLAMA_CPP_REF}" && git checkout FETCH_HEAD; fi \
+    && CUDA_STUB_DIR="$(dirname "$(find /usr/local -type f -name libcuda.so | head -n 1)")" \
+    && [ -n "${CUDA_STUB_DIR}" ] \
+    && ln -sf "${CUDA_STUB_DIR}/libcuda.so" "${CUDA_STUB_DIR}/libcuda.so.1" \
     && CUDACXX=/usr/local/cuda-13.0/bin/nvcc \
        cmake -S /tmp/llama.cpp -B /tmp/llama.cpp/build \
        -DCMAKE_BUILD_TYPE=Release \
        -DGGML_CUDA=ON \
-       -DCMAKE_CUDA_ARCHITECTURES="89;90;100;120" \
+       -DCMAKE_CUDA_ARCHITECTURES="${LLAMA_CUDA_ARCH}" \
        -DGGML_CUDA_FA_ALL_QUANTS=ON \
+       -DCMAKE_EXE_LINKER_FLAGS="-Wl,-rpath-link,${CUDA_STUB_DIR} -L${CUDA_STUB_DIR}" \
     && cmake --build /tmp/llama.cpp/build --config Release -t llama-server -j"$(nproc)" \
     && cp /tmp/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server \
     && rm -rf /tmp/llama.cpp

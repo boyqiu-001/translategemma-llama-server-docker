@@ -85,6 +85,63 @@ docker run --gpus all -d `
   gemma-translate:mainstream-cuda
 ```
 
+## 构建参数详解（重点）
+
+### `docker build` 命令参数
+
+- `-f <Dockerfile>`：指定构建配方（如 `MainstreamCudaDockerfile`、`LegacyCudaDockerfile`、`FutureCudaDockerfile`、`Dockerfile`）
+- `-t <image:tag>`：生成镜像名和标签
+- `--build-arg KEY=VALUE`：传入 Dockerfile 的构建期参数
+- `.`：构建上下文（当前目录）
+
+示例：
+
+```powershell
+docker build -f MainstreamCudaDockerfile `
+  -t gemma-translate:mainstream-cuda `
+  --build-arg LLAMA_CPP_REF=master `
+  --build-arg LLAMA_CUDA_ARCH=86 `
+  .
+```
+
+### Dockerfile 中的构建参数（ARG）
+
+- `LLAMA_CPP_REF`
+  - 含义：指定要编译的 `llama.cpp` 源码引用（分支 / tag / commit / refspec）
+  - 默认：`master`
+  - 示例：`master`、`bXXXX`、`<commit_sha>`
+- `LLAMA_CUDA_ARCH`（仅 CUDA 镜像）
+  - 含义：传给 `-DCMAKE_CUDA_ARCHITECTURES` 的 CUDA 架构列表
+  - 默认值：
+    - `MainstreamCudaDockerfile`：`86`
+    - `LegacyCudaDockerfile`：`61`
+    - `FutureCudaDockerfile`：`89;90;100;120`
+
+### `LLAMA_CUDA_ARCH` 每个数字是什么意思
+
+这些数字对应 CUDA 的 **SM（计算能力）版本去掉小数点**：
+
+- `61` -> sm_61（Pascal 时代常见，如 GTX 10xx 代）
+- `75` -> sm_75（Turing，如 RTX 20xx / T4）
+- `80` -> sm_80（Ampere 数据中心卡，如 A100）
+- `86` -> sm_86（Ampere GA10x，如 RTX 30xx，含 3080 Ti）
+- `89` -> sm_89（Ada，如 RTX 40xx）
+- `90` -> sm_90（Hopper，如 H100/H200）
+- `100` / `120` -> 更新一代架构预留值（只有你确实需要跨新老代兼容时再保留）
+
+如何选：
+
+- 只有单一目标显卡：只填一个值（编译最快、镜像更小）
+- 3080Ti 用 `LLAMA_CUDA_ARCH=86`
+- 要兼容多代显卡：用分号分隔，如 `86;89`（编译更慢、镜像更大）
+
+### CUDA 构建里 CMake 参数解释
+
+- `-DGGML_CUDA=ON`：开启 CUDA 后端
+- `-DCMAKE_CUDA_ARCHITECTURES=...`：只编译指定架构的 CUDA 内核
+- `-DGGML_CUDA_FA_ALL_QUANTS=ON`：开启更全的 Flash-Attn 量化 kernel 路径（运行更通用，编译更慢）
+- `-DCMAKE_EXE_LINKER_FLAGS=...`：给链接器补 CUDA stub 路径，避免 CI 中 `libcuda.so.1 not found` 这类链接报错
+
 ## 客户端请求示例
 
 请求格式要点：
@@ -171,7 +228,7 @@ print(resp.json()["choices"][0]["message"]["content"])
 
 - `MODEL_ROOT`（默认：`D:/models`）
 - `MODEL_NAME`（默认：`translategemma-12b-it-MP-GGUF`）
-- `LLAMA_CPP_REF`（默认：`refs/pull/19052/head`）
+- `LLAMA_CPP_REF`（默认：`master`）
 - `LLAMA_N_GPU_LAYERS`（compose 默认 `-1`）
 - `LLAMA_N_PARALLEL`（compose 默认 `2`）
 - `LLAMA_N_CTX`（compose 默认 `3072`）
@@ -197,7 +254,7 @@ print(resp.json()["choices"][0]["message"]["content"])
 - `.github/workflows/build-and-push-ghcr.yml`
   - 构建并推送镜像到 GHCR
   - 支持 `mainstream / legacy / future / cpu / all`
-  - 支持自定义 `LLAMA_CPP_REF`（默认 `refs/pull/19052/head`）
+  - 支持自定义 `LLAMA_CPP_REF`（默认 `master`）
   - `main`/tag 自动触发时仅构建 `mainstream`（节省 CI 成本）
 
 ### 使用方式

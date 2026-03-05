@@ -23,7 +23,7 @@ on:
         description: "llama.cpp ref (branch/tag/commit/refspec)"
         type: string
         required: false
-        default: refs/pull/19052/head
+        default: master
   push:
     branches:
       - main
@@ -72,7 +72,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LLAMA_CPP_REF=${{ vars.LLAMA_CPP_REF || 'refs/pull/19052/head' }}
+            LLAMA_CPP_REF=${{ vars.LLAMA_CPP_REF || 'master' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -128,6 +128,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LLAMA_CPP_REF=${{ github.event.inputs.llama_cpp_ref || 'refs/pull/19052/head' }}
+            LLAMA_CPP_REF=${{ github.event.inputs.llama_cpp_ref || 'master' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

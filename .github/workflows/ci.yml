@@ -32,7 +32,7 @@ jobs:
           file: Dockerfile
           push: false
           build-args: |
-            LLAMA_CPP_REF=refs/pull/19052/head
+            LLAMA_CPP_REF=master
           tags: local/translategemma-cpu:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

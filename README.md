@@ -85,6 +85,63 @@ docker run --gpus all -d `
   gemma-translate:mainstream-cuda
 ```
 
+## Build Parameters (Detailed)
+
+### Docker build command parameters
+
+- `-f <Dockerfile>`: choose which image recipe to build (`MainstreamCudaDockerfile`, `LegacyCudaDockerfile`, `FutureCudaDockerfile`, `Dockerfile`)
+- `-t <image:tag>`: output image name and tag
+- `--build-arg KEY=VALUE`: pass build-time args into Dockerfile
+- `.`: build context (current folder)
+
+Example:
+
+```powershell
+docker build -f MainstreamCudaDockerfile `
+  -t gemma-translate:mainstream-cuda `
+  --build-arg LLAMA_CPP_REF=master `
+  --build-arg LLAMA_CUDA_ARCH=86 `
+  .
+```
+
+### Dockerfile build args
+
+- `LLAMA_CPP_REF`
+  - meaning: which `llama.cpp` source ref to build (branch/tag/commit/refspec)
+  - default: `master`
+  - examples: `master`, `bXXXX`, `<commit_sha>`
+- `LLAMA_CUDA_ARCH` (CUDA Dockerfiles only)
+  - meaning: CUDA SM architectures passed to `-DCMAKE_CUDA_ARCHITECTURES`
+  - default:
+    - `MainstreamCudaDockerfile`: `86`
+    - `LegacyCudaDockerfile`: `61`
+    - `FutureCudaDockerfile`: `89;90;100;120`
+
+### `LLAMA_CUDA_ARCH` value mapping
+
+These numbers are CUDA **SM (compute capability) major/minor without dot**:
+
+- `61` -> sm_61 (Pascal generation, common in GTX 10xx era cards)
+- `75` -> sm_75 (Turing, e.g. RTX 20xx / T4)
+- `80` -> sm_80 (Ampere datacenter, e.g. A100)
+- `86` -> sm_86 (Ampere GA10x, e.g. RTX 30xx including 3080 Ti)
+- `89` -> sm_89 (Ada Lovelace, e.g. RTX 40xx)
+- `90` -> sm_90 (Hopper, e.g. H100/H200)
+- `100` / `120` -> future/newer architectures (keep only if you really need cross-generation compatibility)
+
+How to choose:
+
+- single target GPU: set one value only (fastest build, smallest binary)
+  - for RTX 3080 Ti, use `LLAMA_CUDA_ARCH=86`
+- mixed GPU fleet: use semicolon-separated list, e.g. `86;89` (slower build, larger binary)
+
+### CMake flags used in CUDA builds
+
+- `-DGGML_CUDA=ON`: enable CUDA backend in ggml/llama.cpp
+- `-DCMAKE_CUDA_ARCHITECTURES=...`: compile kernels for selected SM architectures
+- `-DGGML_CUDA_FA_ALL_QUANTS=ON`: enable wider Flash-Attn quant kernel path (better runtime compatibility/perf, longer build time)
+- `-DCMAKE_EXE_LINKER_FLAGS=...`: points linker to CUDA stub `libcuda` during CI build to avoid `libcuda.so.1 not found` link errors
+
 ## Client Request Demos
 
 Important request format:
@@ -171,7 +228,7 @@ print(resp.json()["choices"][0]["message"]["content"])
 
 - `MODEL_ROOT` (default: `D:/models`)
 - `MODEL_NAME` (default: `translategemma-12b-it-MP-GGUF`)
-- `LLAMA_CPP_REF` (default: `refs/pull/19052/head`)
+- `LLAMA_CPP_REF` (default: `master`)
 - `LLAMA_N_GPU_LAYERS` (default: `-1` in compose)
 - `LLAMA_N_PARALLEL` (default: `2` in compose)
 - `LLAMA_N_CTX` (default: `3072` in compose)
@@ -197,7 +254,7 @@ This repo includes GitHub Actions workflows:
 - `.github/workflows/build-and-push-ghcr.yml`
   - builds images and pushes to GHCR
   - supports `mainstream / legacy / future / cpu / all` variants
-  - supports custom `LLAMA_CPP_REF` (default `refs/pull/19052/head`)
+  - supports custom `LLAMA_CPP_REF` (default `master`)
   - on `main`/tag push, auto-builds `mainstream` only (cost control)
 
 ### How to use

@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: MainstreamCudaDockerfile
       args:
-        LLAMA_CPP_REF: ${LLAMA_CPP_REF:-refs/pull/19052/head}
+        LLAMA_CPP_REF: ${LLAMA_CPP_REF:-master}
     image: gemma-translate:mainstream-cuda
     ports:
       - "127.0.0.1:8080:8080"
