@@ -35,7 +35,49 @@ permissions:
   packages: write
 
 jobs:
-  build:
+  build-mainstream-on-push:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/translategemma-llama-server
+          tags: |
+            type=raw,value=mainstream-latest,enable={{is_default_branch}}
+            type=ref,event=branch,prefix=mainstream-
+            type=ref,event=tag,prefix=mainstream-
+            type=sha,prefix=mainstream-
+
+      - name: Build and push mainstream
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: MainstreamCudaDockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            LLAMA_CPP_REF=${{ vars.LLAMA_CPP_REF || 'refs/pull/19052/head' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-dispatch:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -49,10 +91,6 @@ jobs:
             dockerfile: FutureCudaDockerfile
           - variant: cpu
             dockerfile: Dockerfile
-    if: >
-      (github.event_name == 'workflow_dispatch' &&
-      (github.event.inputs.variant == 'all' || github.event.inputs.variant == matrix.variant)) ||
-      (github.event_name != 'workflow_dispatch' && matrix.variant == 'mainstream')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,7 +99,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.push == 'true'
+        if: (github.event.inputs.variant == 'all' || github.event.inputs.variant == matrix.variant) && github.event.inputs.push == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -69,6 +107,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
+        if: github.event.inputs.variant == 'all' || github.event.inputs.variant == matrix.variant
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -80,14 +119,15 @@ jobs:
             type=sha,prefix=${{ matrix.variant }}-
 
       - name: Build and push
+        if: github.event.inputs.variant == 'all' || github.event.inputs.variant == matrix.variant
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          push: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.push == 'true' }}
+          push: ${{ github.event.inputs.push == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            LLAMA_CPP_REF=${{ github.event.inputs.llama_cpp_ref || vars.LLAMA_CPP_REF || 'refs/pull/19052/head' }}
+            LLAMA_CPP_REF=${{ github.event.inputs.llama_cpp_ref || 'refs/pull/19052/head' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
