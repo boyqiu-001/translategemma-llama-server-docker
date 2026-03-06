@@ -17,7 +17,9 @@ RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
        -DGGML_NATIVE=OFF \
        -DGGML_OPENMP=ON \
     && cmake --build /tmp/llama.cpp/build --config Release -t llama-server -j"$(nproc)" \
+    && find /tmp/llama.cpp/build -maxdepth 3 \( -type f -o -type l \) -name 'lib*.so*' -exec cp -a {} /usr/local/lib/ \; \
     && cp /tmp/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server \
+    && ldconfig \
     && rm -rf /tmp/llama.cpp
 
 COPY entrypoint.sh /entrypoint.sh
