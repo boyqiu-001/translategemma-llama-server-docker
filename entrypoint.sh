@@ -10,6 +10,22 @@ N_THREADS="${LLAMA_N_THREADS:-}"
 FLASH_ATTN="${LLAMA_FLASH_ATTN:-on}"
 EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"
 
+case "${FLASH_ATTN,,}" in
+    1|true|yes)
+        FLASH_ATTN="on"
+        ;;
+    0|false|no)
+        FLASH_ATTN="off"
+        ;;
+    on|off|auto)
+        FLASH_ATTN="${FLASH_ATTN,,}"
+        ;;
+    *)
+        echo "ERROR: LLAMA_FLASH_ATTN must be one of: on, off, auto"
+        exit 1
+        ;;
+esac
+
 if ! command -v llama-server >/dev/null 2>&1; then
     echo "ERROR: llama-server binary not found in PATH"
     exit 1
@@ -65,8 +81,8 @@ if [[ -n "${MMPROJ_PATH}" ]]; then
     ARGS+=(--mmproj "${MMPROJ_PATH}")
 fi
 
-if [[ "${FLASH_ATTN}" == "on" ]]; then
-    ARGS+=(--flash-attn)
+if [[ -n "${FLASH_ATTN}" ]]; then
+    ARGS+=(--flash-attn "${FLASH_ATTN}")
 fi
 
 if [[ -n "${N_THREADS}" ]]; then

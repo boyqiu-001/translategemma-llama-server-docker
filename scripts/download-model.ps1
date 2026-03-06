@@ -1,5 +1,5 @@
 param(
-    [string]$ModelRoot = "D:/models/translategemma-12b-it-MP-GGUF",
+    [string]$ModelRoot = "./models/translategemma-12b-it-MP-GGUF",
     [string]$Repo = "steampunque/translategemma-12b-it-MP-GGUF",
     [string]$QuantFile = "translategemma-12b-it.Q4_K_H.gguf"
 )

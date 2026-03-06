@@ -10,7 +10,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - "${MODEL_ROOT:-D:/models}:/models"
+      - "${MODEL_ROOT:-./models}:/models"
     environment:
       MODEL_NAME: ${MODEL_NAME:-translategemma-12b-it-MP-GGUF}
       LLAMA_N_GPU_LAYERS: ${LLAMA_N_GPU_LAYERS:--1}
