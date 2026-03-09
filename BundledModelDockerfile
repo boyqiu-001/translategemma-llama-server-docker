@@ -1,0 +1,6 @@
+ARG BASE_IMAGE=gemma-translate:mainstream-cuda
+FROM ${BASE_IMAGE}
+
+ENV MODEL_NAME=translategemma-12b-it-MP-GGUF
+
+COPY scripts/models/ /models/

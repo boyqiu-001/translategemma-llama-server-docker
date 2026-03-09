@@ -85,6 +85,34 @@ docker run --gpus all -d `
   gemma-translate:mainstream-cuda
 ```
 
+## Build an Image with Models Bundled
+
+If you already built a base image such as `gemma-translate:mainstream-cuda`, and the model files are present under `scripts/models/`, you can use `BundledModelDockerfile` to create a second image layer that bakes the models into `/models`.
+
+### Build
+
+```powershell
+docker build -f BundledModelDockerfile `
+  --build-arg BASE_IMAGE=gemma-translate:mainstream-cuda `
+  -t gemma-translate:mainstream-cuda-bundled .
+```
+
+### Run
+
+```powershell
+docker run --gpus all -d `
+  --name tg-llama-bundled `
+  -p 127.0.0.1:8080:8080 `
+  -e MODEL_NAME=translategemma-12b-it-MP-GGUF `
+  -e LLAMA_N_GPU_LAYERS=-1 `
+  -e LLAMA_N_PARALLEL=2 `
+  -e LLAMA_N_CTX=3072 `
+  -e LLAMA_FLASH_ATTN=on `
+  gemma-translate:mainstream-cuda-bundled
+```
+
+This image no longer needs a host-side `-v D:/models:/models` bind mount because the model files are stored directly in `/models/translategemma-12b-it-MP-GGUF/` inside the container.
+
 ## Build Parameters (Detailed)
 
 ### Docker build command parameters
@@ -145,9 +173,9 @@ How to choose:
 ## Client Request Demos
 
 Important request format:
-- language fields go in `chat_template_kwargs`
-- text can be plain string in `messages[].content`
-- image uses OpenAI-style `image_url`
+- text translation can keep using `chat_template_kwargs`
+- image translation currently expects `messages[].content` to be an array with exactly one item
+- that item should directly carry `type`, `source_lang_code`, `target_lang_code`, and `url`
 
 ### cURL (text)
 
@@ -181,18 +209,14 @@ curl -X POST "http://127.0.0.1:8080/v1/chat/completions" \
         "role": "user",
         "content": [
           {
-            "type": "image_url",
-            "image_url": {
-              "url": "https://huggingface.co/ggml-org/tinygemma3-GGUF/resolve/main/test/91_cat.png"
-            }
+            "type": "image",
+            "source_lang_code": "en",
+            "target_lang_code": "zh",
+            "url": "https://huggingface.co/ggml-org/tinygemma3-GGUF/resolve/main/test/91_cat.png"
           }
         ]
       }
     ],
-    "chat_template_kwargs": {
-      "source_lang_code": "en",
-      "target_lang_code": "zh"
-    },
     "max_tokens": 500
   }'
 ```
@@ -222,27 +246,51 @@ resp.raise_for_status()
 print(resp.json()["choices"][0]["message"]["content"])
 ```
 
+### PowerShell (local image or image URL)
+
+The repository also includes a ready-to-run image translation test script: `scripts/test-image-translate.ps1`
+
+Local image example:
+
+```powershell
+./scripts/test-image-translate.ps1 `
+  -ImagePath "D:/test-images/menu-en.png" `
+  -SourceLangCode en `
+  -TargetLangCode zh
+```
+
+Remote image example:
+
+```powershell
+./scripts/test-image-translate.ps1 `
+  -ImageUrl "https://example.com/sample-sign.jpg" `
+  -SourceLangCode auto `
+  -TargetLangCode zh
+```
+
 ## Configuration
 
 ### Compose variables
 
-- `MODEL_ROOT` (default: `D:/models`)
-- `MODEL_NAME` (default: `translategemma-12b-it-MP-GGUF`)
-- `LLAMA_CPP_REF` (default: `master`)
-- `LLAMA_N_GPU_LAYERS` (default: `-1` in compose)
-- `LLAMA_N_PARALLEL` (default: `2` in compose)
-- `LLAMA_N_CTX` (default: `3072` in compose)
+- `MODEL_ROOT` (default: `D:/models`): mounted to container path `/models`; if the host path is wrong, startup cannot find the model directory.
+- `MODEL_NAME` (default: `translategemma-12b-it-MP-GGUF`): passed into runtime and selects `/models/<MODEL_NAME>`; also controls whether matching `*mmproj*.gguf` is auto-detected.
+- `LLAMA_CPP_REF` (default: `master`): build-time source ref for `llama.cpp`; changing it rebuilds the image and may change supported flags, behavior, and performance.
+- `LLAMA_N_GPU_LAYERS` (default: `-1` in compose): compose intentionally overrides entrypoint default `0`; `-1` tries to offload all layers to GPU, usually faster but uses the most VRAM.
+- `LLAMA_N_PARALLEL` (default: `2` in compose): compose intentionally overrides entrypoint default `4`; lowers concurrency to save KV cache memory on 12 GB cards.
+- `LLAMA_N_CTX` (default: `3072` in compose): compose intentionally overrides entrypoint default `2048`; gives a longer context window but reserves more memory.
+- `LLAMA_FLASH_ATTN` (default: `on` in compose): enables flash attention by default on the mainstream image; can improve speed / memory efficiency when supported.
+- `LLAMA_PORT` (fixed to `8080` in compose): container listens on `8080`, and compose maps `127.0.0.1:8080:8080`; if you change this, also update `ports` and the healthcheck URL.
 
 ### Runtime variables
 
-- `MODEL_NAME` (required)
-- `LLAMA_N_GPU_LAYERS` (default `0`)
-- `LLAMA_N_CTX` (default `2048`)
-- `LLAMA_N_PARALLEL` (default `4`)
-- `LLAMA_N_THREADS` (optional)
-- `LLAMA_FLASH_ATTN` (default `on`)
-- `LLAMA_PORT` (default `8080`)
-- `LLAMA_EXTRA_ARGS` (optional)
+- `MODEL_NAME` (required): selects `/models/<MODEL_NAME>` at startup. If the directory does not exist, or contains no non-`mmproj` `.gguf`, the container exits immediately. If a `*mmproj*.gguf` file is found in the same folder, image translation is enabled automatically; otherwise the server runs in text-only mode.
+- `LLAMA_N_GPU_LAYERS` (mapped to `-ngl`, default `0`): controls how many transformer layers are offloaded to GPU. `0` means CPU-only execution, `-1` means try to offload all layers, and larger positive values increase GPU usage. Raising it usually improves speed but increases VRAM usage and can trigger OOM.
+- `LLAMA_N_CTX` (mapped to `-c`, default `2048`): sets the context window size. Larger values allow longer prompts / more history, but increase KV cache memory usage even before traffic arrives; lowering it is usually the first fix for OOM.
+- `LLAMA_N_PARALLEL` (mapped to `--parallel`, default `4`): sets how many decoding slots `llama-server` keeps for concurrent requests. This image always enables `--cont-batching`, so raising the value improves concurrency / throughput, but also multiplies KV cache pressure and reduces per-request memory headroom.
+- `LLAMA_N_THREADS` (mapped to `-t`, optional): caps CPU worker threads for CPU-side work. Higher values can reduce latency until the CPU is saturated; too high can cause contention. If unset, `llama-server` chooses its own thread count.
+- `LLAMA_FLASH_ATTN` (mapped to `--flash-attn`, default `on`; `LegacyCudaDockerfile` image default is `off`): accepted values are `on`, `off`, `auto`, plus boolean-like aliases (`1/0`, `true/false`, `yes/no`). Invalid values cause the entrypoint to exit before starting the server. `on` prefers flash attention, `off` disables it, and `auto` leaves the final decision to `llama-server`.
+- `LLAMA_PORT` (mapped to `--port`, default `8080`): changes the listening port inside the container. For manual `docker run`, the host-side `-p` mapping must match it; for compose, also update `ports` and the healthcheck.
+- `LLAMA_EXTRA_ARGS` (optional): appended verbatim after the built-in arguments when launching `llama-server`. Use this for advanced flags not exposed by the image. Because the script splits on spaces, quoting with embedded spaces is fragile; if you repeat a flag already set earlier, the later value may override the earlier one depending on `llama-server` parsing.
 
 ## GitHub CI/CD
 
@@ -291,6 +339,7 @@ If OOM happens:
 entrypoint.sh
 compose.yaml
 Dockerfile
+BundledModelDockerfile
 MainstreamCudaDockerfile
 LegacyCudaDockerfile
 FutureCudaDockerfile

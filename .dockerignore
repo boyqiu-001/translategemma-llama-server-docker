@@ -6,3 +6,5 @@ models
 *.swp
 __pycache__
 .DS_Store
+scripts/models/**/.cache
+scripts/models/**/.cache/**
