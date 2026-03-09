@@ -17,6 +17,9 @@ services:
       LLAMA_N_PARALLEL: ${LLAMA_N_PARALLEL:-2}
       LLAMA_N_CTX: ${LLAMA_N_CTX:-3072}
       LLAMA_FLASH_ATTN: ${LLAMA_FLASH_ATTN:-on}
+      LLAMA_USE_JINJA: ${LLAMA_USE_JINJA:-off}
+      LLAMA_CHAT_TEMPLATE: ${LLAMA_CHAT_TEMPLATE:-}
+      LLAMA_EXTRA_ARGS: ${LLAMA_EXTRA_ARGS:---swa-full}
       LLAMA_PORT: 8080
     gpus: all
     restart: unless-stopped

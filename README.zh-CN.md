@@ -188,6 +188,10 @@ docker build -f MainstreamCudaDockerfile `
 
 ## 客户端请求示例
 
+默认部署说明：
+- 当前默认容器运行方式面向 `LLAMA_USE_JINJA=off` 的 `/completion` 请求。
+- 如果你仍要继续使用 `/v1/chat/completions`，请显式设置 `LLAMA_USE_JINJA=on`。
+
 请求格式要点：
 - 文本翻译可继续使用 `chat_template_kwargs`
 - 图片翻译当前要求 `messages[].content` 是仅包含 1 个元素的数组
@@ -302,6 +306,9 @@ print(resp.json()["choices"][0]["message"]["content"])
 - `LLAMA_N_PARALLEL`（compose 默认 `2`）：compose 有意覆盖了入口脚本默认值 `4`；把并发槽位降到 `2`，是为了在 12GB 显卡上减少 KV cache 占用。
 - `LLAMA_N_CTX`（compose 默认 `3072`）：compose 有意覆盖了入口脚本默认值 `2048`；可支持更长上下文，但会预留更多内存。
 - `LLAMA_FLASH_ATTN`（compose 默认 `on`）：在主流 CUDA 镜像里默认启用 Flash Attention；若运行环境支持，通常能改善速度或显存效率。
+- `LLAMA_USE_JINJA`（compose 默认 `off`）：控制 chat 请求是否使用模型内嵌 Jinja 模板路径。统一的 `/completion` 工作流建议保持 `off`。
+- `LLAMA_CHAT_TEMPLATE`（默认空）：可选，自定义 chat template 名称或模板字符串，主要用于显式启用 chat 风格请求时。
+- `LLAMA_EXTRA_ARGS`（compose 默认 `--swa-full`）：在内置参数之后追加额外的 llama-server 参数。
 - `LLAMA_PORT`（compose 固定为 `8080`）：容器内部监听 `8080`，compose 也映射了 `127.0.0.1:8080:8080`；如果要改它，`ports` 和健康检查地址也要一起改。
 
 ### 运行时变量

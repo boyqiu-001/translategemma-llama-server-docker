@@ -8,6 +8,8 @@ N_CTX="${LLAMA_N_CTX:-2048}"
 N_PARALLEL="${LLAMA_N_PARALLEL:-4}"
 N_THREADS="${LLAMA_N_THREADS:-}"
 FLASH_ATTN="${LLAMA_FLASH_ATTN:-on}"
+USE_JINJA="${LLAMA_USE_JINJA:-off}"
+CHAT_TEMPLATE="${LLAMA_CHAT_TEMPLATE:-}"
 EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"
 
 case "${FLASH_ATTN,,}" in
@@ -22,6 +24,19 @@ case "${FLASH_ATTN,,}" in
         ;;
     *)
         echo "ERROR: LLAMA_FLASH_ATTN must be one of: on, off, auto"
+        exit 1
+        ;;
+esac
+
+case "${USE_JINJA,,}" in
+    1|true|yes|on)
+        USE_JINJA="on"
+        ;;
+    0|false|no|off)
+        USE_JINJA="off"
+        ;;
+    *)
+        echo "ERROR: LLAMA_USE_JINJA must be one of: on, off"
         exit 1
         ;;
 esac
@@ -59,6 +74,10 @@ echo "GPU layers   : ${N_GPU_LAYERS}"
 echo "Parallel slot: ${N_PARALLEL}"
 echo "Context size : ${N_CTX}"
 echo "FlashAttn    : ${FLASH_ATTN}"
+echo "Use Jinja    : ${USE_JINJA}"
+if [[ -n "${CHAT_TEMPLATE}" ]]; then
+    echo "Chat tmpl    : ${CHAT_TEMPLATE}"
+fi
 echo "Port         : ${LLAMA_PORT}"
 if [[ -n "${EXTRA_ARGS}" ]]; then
     echo "Extra args   : ${EXTRA_ARGS}"
@@ -73,9 +92,18 @@ ARGS=(
     -ngl "${N_GPU_LAYERS}"
     --parallel "${N_PARALLEL}"
     --cont-batching
-    --jinja
     --metrics
 )
+
+if [[ "${USE_JINJA}" == "on" ]]; then
+    ARGS+=(--jinja)
+else
+    ARGS+=(--no-jinja)
+fi
+
+if [[ -n "${CHAT_TEMPLATE}" ]]; then
+    ARGS+=(--chat-template "${CHAT_TEMPLATE}")
+fi
 
 if [[ -n "${MMPROJ_PATH}" ]]; then
     ARGS+=(--mmproj "${MMPROJ_PATH}")

@@ -2,8 +2,7 @@ param(
     [string]$BaseUrl = "http://127.0.0.1:8080",
     [string]$ImagePath,
     [string]$ImageUrl,
-    [string]$Text,
-    [string]$SourceLangCode = "auto",
+    [string]$SourceLangCode = "en",
     [string]$TargetLangCode = "zh",
     [int]$MaxTokens = 500,
     [double]$Temperature = 0.2,
@@ -11,33 +10,108 @@ param(
     [switch]$RawResponse
 )
 
-function Get-ImageMimeType {
-    param([string]$Path)
+function Get-ImageBytes {
+    param(
+        [string]$Path,
+        [string]$Url
+    )
 
-    $extension = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    if (-not [string]::IsNullOrWhiteSpace($Path)) {
+        $resolvedPath = (Resolve-Path $Path).Path
+        return [System.IO.File]::ReadAllBytes($resolvedPath)
+    }
 
-    switch ($extension) {
-        ".png" { return "image/png" }
-        ".jpg" { return "image/jpeg" }
-        ".jpeg" { return "image/jpeg" }
-        ".webp" { return "image/webp" }
-        ".gif" { return "image/gif" }
-        ".bmp" { return "image/bmp" }
-        default {
-            throw "Unsupported image extension: $extension. Supported: .png, .jpg, .jpeg, .webp, .gif, .bmp"
-        }
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        throw "Please provide -ImagePath or -ImageUrl."
+    }
+
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $tempFile -TimeoutSec 300 | Out-Null
+        return [System.IO.File]::ReadAllBytes($tempFile)
+    } finally {
+        Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
     }
 }
 
-function Convert-ImageToDataUrl {
-    param([string]$Path)
+function Get-LanguageName {
+    param([string]$Code)
 
-    $resolvedPath = (Resolve-Path $Path).Path
-    $mimeType = Get-ImageMimeType -Path $resolvedPath
-    $bytes = [System.IO.File]::ReadAllBytes($resolvedPath)
-    $base64 = [System.Convert]::ToBase64String($bytes)
+    $names = @{
+        ar = "Arabic"
+        az = "Azerbaijani"
+        bg = "Bulgarian"
+        bn = "Bengali"
+        ca = "Catalan"
+        cs = "Czech"
+        da = "Danish"
+        de = "German"
+        el = "Greek"
+        en = "English"
+        eo = "Esperanto"
+        es = "Spanish"
+        et = "Estonian"
+        eu = "Basque"
+        fa = "Persian"
+        fi = "Finnish"
+        fr = "French"
+        ga = "Irish"
+        gl = "Galician"
+        he = "Hebrew"
+        hi = "Hindi"
+        hu = "Hungarian"
+        id = "Indonesian"
+        it = "Italian"
+        ja = "Japanese"
+        ko = "Korean"
+        lt = "Lithuanian"
+        lv = "Latvian"
+        ms = "Malay"
+        nb = "Norwegian Bokmal"
+        nl = "Dutch"
+        pl = "Polish"
+        pt = "Portuguese"
+        ro = "Romanian"
+        ru = "Russian"
+        sk = "Slovak"
+        sl = "Slovenian"
+        sq = "Albanian"
+        sv = "Swedish"
+        th = "Thai"
+        tl = "Tagalog"
+        tr = "Turkish"
+        uk = "Ukrainian"
+        ur = "Urdu"
+        zh = "Chinese"
+        'zh-Hant' = "Traditional Chinese"
+        zt = "Traditional Chinese"
+    }
 
-    return "data:$mimeType;base64,$base64"
+    if ($names.ContainsKey($Code)) {
+        return $names[$Code]
+    }
+
+    return $Code
+}
+
+function New-ImagePrompt {
+    param(
+        [string]$SourceLangCode,
+        [string]$TargetLangCode
+    )
+
+    $sourceName = Get-LanguageName -Code $SourceLangCode
+    $targetName = Get-LanguageName -Code $TargetLangCode
+
+    return @"
+<start_of_turn>user
+You are a professional $sourceName ($SourceLangCode) to $targetName ($TargetLangCode) translator. Your goal is to accurately convey the meaning and nuances of the original $sourceName text while adhering to $targetName grammar, vocabulary, and cultural sensitivities.
+Please translate the $sourceName text in the provided image into $targetName. Produce only the $targetName translation, without any additional explanations, alternatives or commentary. Focus only on the text, do not output where the text is located, surrounding objects or any other explanation about the picture. Ignore symbols, pictogram, and arrows!
+
+
+<__media__><end_of_turn>
+<start_of_turn>model
+"@
 }
 
 if ([string]::IsNullOrWhiteSpace($ImagePath) -and [string]::IsNullOrWhiteSpace($ImageUrl)) {
@@ -50,43 +124,19 @@ if (-not [string]::IsNullOrWhiteSpace($ImagePath) -and -not (Test-Path $ImagePat
     exit 1
 }
 
-$imageReference = if (-not [string]::IsNullOrWhiteSpace($ImagePath)) {
-    Convert-ImageToDataUrl -Path $ImagePath
-} else {
-    $ImageUrl
-}
-
+$imageBytes = Get-ImageBytes -Path $ImagePath -Url $ImageUrl
+$imageBase64 = [System.Convert]::ToBase64String($imageBytes)
+$prompt = New-ImagePrompt -SourceLangCode $SourceLangCode -TargetLangCode $TargetLangCode
 $baseUrlTrimmed = $BaseUrl.TrimEnd('/')
 
-$content = @()
-
-if (-not [string]::IsNullOrWhiteSpace($Text)) {
-    $content += [ordered]@{
-        type = "text"
-        text = $Text
-    }
-}
-
-$content += [ordered]@{
-    type = "image_url"
-    image_url = [ordered]@{
-        url = $imageReference
-    }
-}
-
 $payload = [ordered]@{
-    messages = @(
-        [ordered]@{
-            role = "user"
-            content = $content
-        }
-    )
-    chat_template_kwargs = [ordered]@{
-        source_lang_code = $SourceLangCode
-        target_lang_code = $TargetLangCode
+    prompt = [ordered]@{
+        prompt_string = $prompt
+        multimodal_data = @($imageBase64)
     }
-    max_tokens = $MaxTokens
+    n_predict = $MaxTokens
     temperature = $Temperature
+    stream = $false
 }
 
 if (-not [string]::IsNullOrWhiteSpace($Model)) {
@@ -95,22 +145,19 @@ if (-not [string]::IsNullOrWhiteSpace($Model)) {
 
 $jsonBody = $payload | ConvertTo-Json -Depth 10
 
-Write-Host "POST $baseUrlTrimmed/v1/chat/completions"
+Write-Host "POST $baseUrlTrimmed/completion"
 if (-not [string]::IsNullOrWhiteSpace($ImagePath)) {
     Write-Host "ImagePath: $((Resolve-Path $ImagePath).Path)"
 } else {
     Write-Host "ImageUrl: $ImageUrl"
 }
 Write-Host "Translate: $SourceLangCode -> $TargetLangCode"
-Write-Host "PayloadMode: openai-image_url"
-if (-not [string]::IsNullOrWhiteSpace($Text)) {
-    Write-Host "Text: $Text"
-}
+Write-Host "PayloadMode: completion-multimodal"
 
 try {
     $response = Invoke-RestMethod `
         -Method Post `
-        -Uri "$baseUrlTrimmed/v1/chat/completions" `
+        -Uri "$baseUrlTrimmed/completion" `
         -ContentType "application/json; charset=utf-8" `
         -Body $jsonBody `
         -TimeoutSec 300
@@ -129,14 +176,14 @@ if ($RawResponse) {
     exit 0
 }
 
-$translation = $response.choices[0].message.content
+$translation = $response.content
 
 if ([string]::IsNullOrWhiteSpace($translation)) {
-    Write-Warning "Response does not contain choices[0].message.content."
+    Write-Warning "Response does not contain completion content."
     $response | ConvertTo-Json -Depth 10
     exit 0
 }
 
 Write-Host ""
 Write-Host "Translation Result:" -ForegroundColor Green
-Write-Output $translation
+Write-Output $translation.Trim()

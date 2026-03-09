@@ -172,6 +172,10 @@ How to choose:
 
 ## Client Request Demos
 
+Default deployment note:
+- The current default container runtime is intended for `/completion` requests with `LLAMA_USE_JINJA=off`.
+- If you want to keep using `/v1/chat/completions`, explicitly set `LLAMA_USE_JINJA=on`.
+
 Important request format:
 - text translation can keep using `chat_template_kwargs`
 - image translation currently expects `messages[].content` to be an array with exactly one item
@@ -279,6 +283,9 @@ Remote image example:
 - `LLAMA_N_PARALLEL` (default: `2` in compose): compose intentionally overrides entrypoint default `4`; lowers concurrency to save KV cache memory on 12 GB cards.
 - `LLAMA_N_CTX` (default: `3072` in compose): compose intentionally overrides entrypoint default `2048`; gives a longer context window but reserves more memory.
 - `LLAMA_FLASH_ATTN` (default: `on` in compose): enables flash attention by default on the mainstream image; can improve speed / memory efficiency when supported.
+- `LLAMA_USE_JINJA` (default: `off` in compose): controls whether chat requests use the model's embedded Jinja template path. Keep it `off` for the unified `/completion` workflow.
+- `LLAMA_CHAT_TEMPLATE` (default: empty): optional custom chat template name/string for chat-style requests when Jinja is enabled.
+- `LLAMA_EXTRA_ARGS` (default: `--swa-full` in compose): appends extra llama-server flags after built-in arguments.
 - `LLAMA_PORT` (fixed to `8080` in compose): container listens on `8080`, and compose maps `127.0.0.1:8080:8080`; if you change this, also update `ports` and the healthcheck URL.
 
 ### Runtime variables
